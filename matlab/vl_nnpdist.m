@@ -38,7 +38,7 @@ function [y1, y2] = vl_nnpdist(x, x0, p, varargin)
 %      Instead of returning one scalar for each spatial location in
 %      the inputs, sum all of them into a single scalar.
 %
-%   `InstanceWeights``:: `[]`
+%   `InstanceWeights`:: `[]`
 %      Optionally weight individual instances. This parameter can be
 %      eigther a scalar or a weight mask, one for each pixel in the
 %      input tensor.
@@ -126,7 +126,7 @@ if isempty(dzdy)
     y1 = bsxfun(@times, opts.instanceWeights, y1) ;
   end
   if opts.aggregate
-    y1 = sum(sum(y1)) ;
+    y1 = sum(y1(:)) ;
   end
 end
 if ~isempty(dzdy), y2 = -y1; end

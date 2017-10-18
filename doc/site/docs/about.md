@@ -1,27 +1,99 @@
 # About MatConvNet
 
-MatConvNet was born in the Oxford Visual Geometry Group as both an
-educational and research platform for fast prototyping in
-Convolutional Neural Nets. Its main features are:
+MatConvNet was born in the Oxford Visual Geometry Group as an
+educational and research platform for fast prototyping of
+Convolutional Neural Networks.
 
-- *Flexibility.* Neural network layers are implemented in a
-  straightforward manner, often directly in MATLAB code, so that they
-  are easy to modify, extend, or integrate with new ones. Other
-  toolboxes hide the neural network layers behind a wall of compiled
-  code; here the granularity is much finer.
-- *Power.* The implementation can run large models such as Krizhevsky
-  et al., including the DeCAF and Caffe variants. Several pre-trained
-  models are provided.
-- *Efficiency.* The implementation is quite efficient, supporting both
-  CPU and GPU computation.
-
-This library may be merged in the future with
-[VLFeat library](http://www.vlfeat.org/). It uses a very similar
-style, so if you are familiar with VLFeat, you should be right at home
-here.
+MatConvNet is a flexible framework capable of learning large neural networks on one or
+multiple GPUs. Except for low-level building blocks, it is all written in MATLAB,
+which allows easy hacking, including creating new autodiff methods. Many [research papers](https://scholar.google.co.uk/scholar?cites=887098456902972163) have used MatConvNet.
 
 <a name='changes'></a>
 # Changes
+
+-   1.0-beta25 (August 2017).
+
+    **New features**
+
+    * Modular system `vl_contrib` giving quick access to many user
+      contributions.
+
+    **Changes affecting backward compatibility**
+
+    The build system was simplified removing special cases for older
+    MATLAB bugs and limitations, and to support C++11 as production
+    language. Recent MATLAB, compilers, and CUDA versions should all
+    still work.
+
+-   1.0-beta24 (March 2017).
+
+    **New features**
+
+    * New toy example `cnn_toy_data.m` demonstrating using a
+      customized `imdb`.
+    * `vl_argparse.m` now supports dot paths and ignoring missing
+      defaults.
+    * Support for different example solvers (AdaGrad, Adam, AdaDelta,
+      RMSProp) and ability to add new ones.
+    * A new function `vl_tshow.m` to glance at tensors.
+    * Bugfixes.
+
+-   1.0-beta23 (September 2016).
+
+    **New features**
+
+    * A new function `vl_nnroipool.m` for region of interest pooling,
+      supporting networks such as Fast-RCNN.
+    * Imported Fast-RCNN models from Caffe.
+    * An example Fast-RCNN implementation, training and testing.
+
+-   1.0-beta22 (Spetember 2016).
+
+    * Bugfixes.
+
+-   1.0-beta21 (June 2016).
+
+    **New features**
+
+    * A new function `vl_tacc.m` to accumulate tensors efficiently.
+    * A rewritten `vl_imreadjpeg.m` function that can load, jitter,
+      and transfer images to the GPU in parallel.
+    * A new function `vl_tmove.m` to transfer tensor data between
+      multiple (local) MATLAB processes efficiently.
+    * A wrapper `ParameterSever.m` to simplify the use of `vl_tmove.m`.
+    * Adds support for `ParameterSever` in the examples.
+    * Adds an option in the example training script to save the
+      momentum between epochs.
+    * Batch normalization can use CuDNN implementation.
+    * `vl_nnconv.m` now supports the `dilate` option for dilated
+      convolution.
+
+    **Changes affecting backward compatibility**
+
+    * The ImageNet example have been updated to use the new
+      `vl_imreadjpeg.m`. This mainly affects the way images are loaded
+      in `getBatch`.
+
+    * The example scripts `cnn_train.m` and `cnn_train_dag.m` have
+      been updated in various way, so that old snapshot files may not
+      be compatible.
+
+    * The way *batch normalization* accumulates moments during
+      training has been changed slightly to work properly with complex
+      architectures such as siamese ones where the number of data
+      instances may change throughout the network.
+
+-   1.0-beta20 (May 2016).
+
+    **New features**
+
+    * New spatial bilinear resampler `vl_nnbilinearsampler.m` to warp
+      images spatially.
+
+    * New `cnn_stn_cluttered_mnist.m` example to demonstrate
+      spatial transformer networks.
+
+    * MATLAB R2016a compatibility.
 
 -   1.0-beta19 (April 2016).
 
@@ -166,6 +238,7 @@ MatConvNet is developed by several hands:
 * Karel Lenc, DaG, several building blocks and examples
 * Sébastien Ehrhardt, GPU implementation of batch normalization, FCN
   building blocks and examples
+* Ankush Gupta, spatial transformer implementation and examples
 * Max Jaderberg, general improvements and bugfixes
 
 MatConvNet quality also depends on the many people using the toolbox
@@ -178,22 +251,22 @@ This package was originally created by
 and it is currently developed by a small community of contributors. It
 is distributed under the permissive BSD license (see also the file
 `COPYING`):
+```no-highlight
+Copyright (c) 2014-16 The MatConvNet team.
+All rights reserved.
 
-    Copyright (c) 2014-15 The MatConvNet team.
-    All rights reserved.
-
-    Redistribution and use in source and binary forms are permitted
-    provided that the above copyright notice and this paragraph are
-    duplicated in all such forms and that any documentation,
-    advertising materials, and other materials related to such
-    distribution and use acknowledge that the software was developed
-    by the <organization>. The name of the <organization> may not be
-    used to endorse or promote products derived from this software
-    without specific prior written permission.  THIS SOFTWARE IS
-    PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES,
-    INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
-    MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
-
+Redistribution and use in source and binary forms are permitted
+provided that the above copyright notice and this paragraph are
+duplicated in all such forms and that any documentation,
+advertising materials, and other materials related to such
+distribution and use acknowledge that the software was developed
+by the <organization>. The name of the <organization> may not be
+used to endorse or promote products derived from this software
+without specific prior written permission.  THIS SOFTWARE IS
+PROVIDED ``AS IS'' AND WITHOUT ANY EXPRESS OR IMPLIED WARRANTIES,
+INCLUDING, WITHOUT LIMITATION, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE.
+```
 # Acknowledgments
 
 The implementation of the computational blocks in this library, and in

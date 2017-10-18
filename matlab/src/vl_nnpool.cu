@@ -32,7 +32,7 @@ enum {
 } ;
 
 /* options */
-vlmxOption  options [] = {
+VLMXOption  options [] = {
   {"Stride",           1,   opt_stride            },
   {"Pad",              1,   opt_pad               },
   {"Method",           1,   opt_method            },
@@ -80,7 +80,7 @@ void mexFunction(int nout, mxArray *out[],
   int padRight = 0 ;
   int padTop = 0 ;
   int padBottom = 0 ;
-  vl::PoolingMethod method = vl::vlPoolingMax ;
+  auto method = vl::nn::Pooling::Max ;
   bool backMode = false ;
 
   int verbosity = 0 ;
@@ -153,14 +153,14 @@ void mexFunction(int nout, mxArray *out[],
 
       case opt_method :
         if (!vlmxIsString(optarg,-1)) {
-           vlmxError(vlmxErrInvalidArgument, "METHOD is not a string.") ;
+           vlmxError(VLMXE_IllegalArgument, "METHOD is not a string.") ;
         }
         if (vlmxIsEqualToStringI(optarg, "max")) {
-          method = vl::vlPoolingMax ;
+          method = vl::nn::Pooling::Max ;
         } else if (vlmxIsEqualToStringI(optarg, "avg")) {
-          method = vl::vlPoolingAverage ;
+          method = vl::nn::Pooling::Average;
         } else {
-          vlmxError(vlmxErrInvalidArgument, "METHOD is not a supported method.") ;
+          vlmxError(VLMXE_IllegalArgument, "METHOD is not a supported method.") ;
         }
         break;
 
@@ -247,8 +247,8 @@ void mexFunction(int nout, mxArray *out[],
   }
 
   /* Create output buffers */
-  vl::Device deviceType = data.getDeviceType() ;
-  vl::Type dataType = data.getDataType() ;
+  vl::DeviceType deviceType = data.getDeviceType() ;
+  vl::DataType dataType = data.getDataType() ;
   vl::MexTensor output(context) ;
   vl::MexTensor derData(context) ;
 
@@ -259,8 +259,8 @@ void mexFunction(int nout, mxArray *out[],
   }
 
   if (verbosity > 0) {
-    mexPrintf("vl_nnpool: %s; %s", backMode?"backward":"forward", (data.getDeviceType()==vl::GPU) ? "GPU" : "CPU") ;
-    if (data.getDeviceType() == vl::GPU) {
+    mexPrintf("vl_nnpool: %s; %s", backMode?"backward":"forward", (data.getDeviceType()==vl::VLDT_GPU) ? "GPU" : "CPU") ;
+    if (data.getDeviceType() == vl::VLDT_GPU) {
 #if ENABLE_CUDNN
       mexPrintf("; %s\n", context.getCudaHelper().getCudnnEnabled() ? "cuDNN" : "MatConvNet") ;
 #else
@@ -274,7 +274,7 @@ void mexFunction(int nout, mxArray *out[],
               padTop, padBottom, padLeft, padRight) ;
     vl::print("vl_nnpool: data: ", data) ;
     mexPrintf("vl_nnpool: pooling: %d x %d\n", poolHeight, poolWidth);
-    mexPrintf("vl_nnpool: method: %s\n", (method == vl::vlPoolingMax) ? "max" : "avg") ;
+    mexPrintf("vl_nnpool: method: %s\n", (method == vl::nn::Pooling::Max) ? "max" : "avg") ;
     if (backMode) {
       vl::print("vl_nnpool: derOutput: ", derOutput) ;
       vl::print("vl_nnpool: derData: ", derData) ;
@@ -287,28 +287,24 @@ void mexFunction(int nout, mxArray *out[],
   /*                                                    Do the work */
   /* -------------------------------------------------------------- */
 
-  vl::Error error ;
+  vl::ErrorCode error ;
+  vl::nn::Pooling op(context,
+                     poolHeight, poolWidth,
+                     strideY, strideX,
+                     padTop, padBottom, padLeft, padRight,
+                     method) ;
+
   if (!backMode) {
-    error = vl::nnpooling_forward(context,
-                                  output, data,
-                                  method,
-                                  poolHeight, poolWidth,
-                                  strideY, strideX,
-                                  padTop, padBottom, padLeft, padRight) ;
+    error = op.forward(output, data) ;
   } else {
-    error = vl::nnpooling_backward(context,
-                                   derData, data, derOutput,
-                                   method,
-                                   poolHeight, poolWidth,
-                                   strideY, strideX,
-                                   padTop, padBottom, padLeft, padRight) ;
+    error = op.backward(derData, data, derOutput) ;
   }
 
   /* -------------------------------------------------------------- */
   /*                                                         Finish */
   /* -------------------------------------------------------------- */
 
-  if (error != vl::vlSuccess) {
+  if (error != vl::VLE_Success) {
     mexErrMsgTxt(context.getLastErrorMessage().c_str()) ;
   }
   if (backMode) {

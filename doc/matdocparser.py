@@ -51,7 +51,7 @@ import os
 import re
 
 __mpname__           = 'MatDocParser'
-__version__          = '1.0-beta15'
+__version__          = '1.0-beta25'
 __date__             = '2015-09-20'
 __description__      = 'MatDoc MATLAB inline function description interpreter.'
 __long_description__ = __doc__
@@ -174,7 +174,7 @@ class Lexer(object):
 # P(indent) -> PL(indent)+
 #
 # A V(indent) is a verbatim (code) block. It contains text lines and blank
-# lines that have indentation strictly larger than indent:
+# lines that have indentation strictly larger than `indent`:
 #
 # V(indent) -> L(i) (B | L(j), j > indent)+, for all i > indent
 #

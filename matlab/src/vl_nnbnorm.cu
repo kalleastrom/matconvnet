@@ -26,13 +26,17 @@ enum {
   opt_verbose = 0,
   opt_epsilon,
   opt_moments,
+  opt_cudnn,
+  opt_no_cudnn,
 } ;
 
 /* options */
-vlmxOption  options [] = {
+VLMXOption  options [] = {
   {"Verbose",          0,   opt_verbose           },
-  {"Epsilon",	       1,   opt_epsilon           },
+  {"Epsilon",	         1,   opt_epsilon           },
   {"Moments",          1,   opt_moments           },
+  {"Cudnn",            0,   opt_cudnn             },
+  {"NoCudnn",          0,   opt_no_cudnn          },
   {0,                  0,   0                     }
 } ;
 
@@ -102,19 +106,35 @@ void mexFunction(int nout, mxArray *out[],
 
   while ((opt = vlmxNextOption (in, nin, options, &next, &optarg)) >= 0) {
     switch (opt) {
+
       case opt_verbose :
         ++ verbosity ;
         break ;
+
       case opt_epsilon :
         if (!vlmxIsPlainScalar(optarg)) {
           mexErrMsgTxt("EPSILON is not a plain scalar.") ;
         }
         epsilon = mxGetPr(optarg)[0] ;
         break ;
+
       case opt_moments:
         momentsArray = optarg ;
         givenMomentsMode = true ;
         break ;
+
+      case opt_no_cudnn:
+#if ENABLE_CUDNN
+        context.getCudaHelper().setCudnnEnabled(false) ;
+#endif
+        break ;
+
+      case opt_cudnn :
+#if ENABLE_CUDNN
+        context.getCudaHelper().setCudnnEnabled(true) ;
+#endif
+        break ;
+        
       default:
         break ;
     }
@@ -180,8 +200,8 @@ void mexFunction(int nout, mxArray *out[],
   }
 
   /* Create output buffers */
-  vl::Device deviceType = data.getDeviceType() ;
-  vl::Type dataType = data.getDataType() ;
+  vl::DeviceType deviceType = data.getDeviceType() ;
+  vl::DataType dataType = data.getDataType() ;
   vl::MexTensor output(context) ;
   vl::MexTensor derData(context) ;
   vl::MexTensor derMultipliers(context) ;
@@ -208,7 +228,7 @@ void mexFunction(int nout, mxArray *out[],
 
   if (verbosity > 0) {
     mexPrintf("vl_nnbnorm: mode %s; %s; moments %s/%s\n",
-              (data.getDeviceType()==vl::GPU)?"gpu":"cpu",
+              (data.getDeviceType()==vl::VLDT_GPU)?"gpu":"cpu",
               backMode?"backward":"forward",
               givenMomentsMode?"given":"computed",
               returnMomentsMode?"returned":"discared") ;
@@ -224,54 +244,41 @@ void mexFunction(int nout, mxArray *out[],
       vl::print("vl_nnbnorm: output: ", output) ;
     }
     if (moments) { vl::print("vl_nnbnorm: moments: ", moments) ; }
+    mexPrintf("vl_nnbnorm: epsilon: %f\n", epsilon) ;
   }
 
   /* -------------------------------------------------------------- */
   /*                                                    Do the work */
   /* -------------------------------------------------------------- */
 
-  vl::Error error ;
+  vl::ErrorCode error ;
+  vl::nn::BatchNorm op(context,epsilon) ;
 
   if (!backMode) {
     if (!givenMomentsMode) {
-      error = vl::nnbnorm_forward(context,
-                                  output,
-                                  moments, // ok if null
-                                  data,
-                                  multipliers,
-                                  biases,
-                                  epsilon) ;
+      error = op.forward(output,moments,data,multipliers,biases) ;
     } else {
-      error = vl::nnbnorm_forward_given_moments(context,
-                                                output,
-                                                moments,
-                                                data,
-                                                multipliers,
-                                                biases) ;
+      error = op.forwardWithMoment(output,moments,data,multipliers,biases) ;
     }
   } else {
     if (!givenMomentsMode) {
-      error = vl::nnbnorm_backward(context,
-                                   derData,
-                                   derMultipliers,
-                                   derBiases,
-                                   moments,
-                                   data,
-                                   multipliers,
-                                   biases,
-                                   derOutput,
-                                   epsilon);
+      error = op.backward(derData,
+                          derMultipliers,
+                          derBiases,
+                          moments,
+                          data,
+                          multipliers,
+                          biases,
+                          derOutput) ;
     } else {
-      error = vl::nnbnorm_backward_given_moments(context,
-                                                 derData,
-                                                 derMultipliers,
-                                                 derBiases,
-                                                 moments,
-                                                 data,
-                                                 multipliers,
-                                                 biases,
-                                                 derOutput,
-                                                 epsilon) ;
+      error = op.backwardWithMoment(derData,
+                                    derMultipliers,
+                                    derBiases,
+                                    moments,
+                                    data,
+                                    multipliers,
+                                    biases,
+                                    derOutput) ;
     }
   }
 
@@ -279,7 +286,7 @@ void mexFunction(int nout, mxArray *out[],
   /*                                                         Finish */
   /* -------------------------------------------------------------- */
 
-  if (error != vl::vlSuccess) {
+  if (error != vl::VLE_Success) {
     mexErrMsgTxt(context.getLastErrorMessage().c_str()) ;
   }
   if (!backMode) {

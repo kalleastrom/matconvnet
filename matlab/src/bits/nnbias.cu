@@ -3,7 +3,7 @@
 // @author Andrea Vedaldi
 
 /*
-Copyright (C) 2015-16 Andrea Vedaldi.
+Copyright (C) 2015-17 Andrea Vedaldi.
 All rights reserved.
 
 This file is part of the VLFeat library and is made available under
@@ -11,129 +11,200 @@ the terms of the BSD license (see the COPYING file).
 */
 
 #include "nnbias.hpp"
-#include "impl/nnbias_blas.hpp"
-#if ENABLE_CUDNN
-#include "impl/nnbias_cudnn.hpp"
-#endif
-#include <assert.h>
+#include "impl/dispatcher.hpp"
+#include "impl/blashelper.hpp"
+#include "impl/copy.hpp"
+#include <cassert>
+#include <cmath>
+#include <cstdlib>
+#include <limits>
+#include <algorithm>
 
+using namespace std ;
 using namespace vl ;
+using namespace vl::nn ;
+using namespace vl::impl ;
 
-/* ---------------------------------------------------------------- */
-/* Forward                                                          */
-/* ---------------------------------------------------------------- */
+template<DeviceType deviceType, DataType dataType> struct BiasForward ;
+template<DeviceType deviceType, DataType dataType> struct BiasBackward ;
+template<DataType dataType> struct BiasForwardCudnn ;
+template<DataType dataType> struct BiasBackwardCudnn ;
 
-#define DISPATCH(deviceType,dataType) \
-status = vl::impl::nnbias_forward_blas<deviceType,dataType> \
-(context, output, outputMult, data, dataMult, biases, biasesMult) ;
+// -------------------------------------------------------------------
+//                                                             Forward
+// -------------------------------------------------------------------
 
-#define DISPATCH2(deviceType) \
-switch (dataType) { \
-case vlTypeFloat : DISPATCH(deviceType,vlTypeFloat) ; break ; \
-IF_DOUBLE(case vlTypeDouble : DISPATCH(deviceType,vlTypeDouble) ; break ;) \
-default: assert(false) ; return vlErrorUnknown ; \
-}
-
-#define DISPATCHCUDNN(dataType) \
-status = vl::impl::nnbias_cudnn<dataType>::forward \
-(context, output, outputMult, data, dataMult, biases, biasesMult) ;
-
-#define DISPATCHCUDNN2() \
-switch (dataType) { \
-case vlTypeFloat : DISPATCHCUDNN(vlTypeFloat) ; break ; \
-IF_DOUBLE(case vlTypeDouble : DISPATCHCUDNN(vlTypeDouble) ; break ;) \
-default: assert(false) ; return vlErrorUnknown ; \
-}
-
-vl::Error
-vl::nnbias_forward(vl::Context& context,
-                   vl::Tensor output, double outputMult,
-                   vl::Tensor data, double dataMult,
-                   vl::Tensor biases, double biasesMult)
+template<DeviceType deviceType, DataType dataType>
+struct BiasForward
 {
-  vl::Error status = vlSuccess ;
-  vl::Type dataType = output.getDataType() ;
+  // output <- outputMult * output + inputMult * input + biasMult * bias
+  vl::ErrorCode operator()(Bias & op,
+                           Tensor &output, double outputMult,
+                           Tensor const &input, double inputMult,
+                           Tensor const &bias, double biasMult)
+  {
+    vl::ErrorCode error ;
+    auto numOutputPixels = output.getHeight() * output.getWidth() ;
+    auto volume = output.getNumElements() ;
 
-  switch (output.getDeviceType()) {
-    default:
-      assert(false) ;
-      status = vl::vlErrorUnknown ;
-      break ;
+    typedef typename DataTypeTraits<dataType>::type type ;
 
-    case vl::CPU:
-      DISPATCH2(vl::CPU) ;
-      break ;
-
-#if ENABLE_GPU
-    case vl::GPU:
-#if ENABLE_CUDNN
-      if (context.getCudaHelper().getCudnnEnabled()) {
-        DISPATCHCUDNN2() ;
-        if (status == vl::vlSuccess) { return status ; }
-        if (status != vl::vlErrorUnsupported) { goto done ; }
-        /* this case was not supported by CUDNN -- fallback */
+    // Broadcast add biasMult * bias.
+    if (bias && biasMult != 0) {
+      type const* allOnesMemory = (type*) op.context.getAllOnes
+      (deviceType, dataType, numOutputPixels) ;
+      if (allOnesMemory == NULL) {
+        error = op.context.getLastError() ; goto done ;
       }
-#endif
-      DISPATCH2(vl::GPU) ;
-      break ;
-#endif
+
+      for (int image = 0 ; image < output.getSize() ; ++image) {
+        ptrdiff_t outputOffset =
+        (output.getHeight()*output.getWidth()*output.getDepth()) * image ;
+
+        type alpha = outputMult ;
+
+        error = vl::impl::blas<deviceType,dataType>::gemm
+        (op.context,
+         'n', 'n',
+         numOutputPixels, bias.getNumElements(), 1,
+         biasMult,
+         allOnesMemory, numOutputPixels,
+         (type*)bias.getMemory(), 1,
+         alpha,
+         (type*)output.getMemory() + outputOffset, numOutputPixels) ;
+        if (error != VLE_Success) { goto done ; }
+      }
+    }
+    else {
+      error = vl::impl::operations<deviceType,type>::fill
+      ((type*)output.getMemory(), output.getNumElements(), 0) ;
+      if (error != VLE_Success) { goto done ; }
+    }
+
+    // Add inputMult * input.
+    if (input && inputMult != 0) {
+      error = vl::impl::blas<deviceType,dataType>::axpy
+      (op.context,output.getNumElements(),
+       inputMult,(type const*)input.getMemory(),1,
+       (type*)output.getMemory(),1) ;
+      if (error != VLE_Success) { goto done ; }
+    }
+
+  done:
+    return op.context.passError(error, __func__) ;
   }
-#if ENABLE_CUDNN
-done:
-#endif
-  return context.passError(status, __func__) ;
-}
+} ;
 
-/* ---------------------------------------------------------------- */
-/* Backward                                                         */
-/* ---------------------------------------------------------------- */
+// -------------------------------------------------------------------
+//                                                            Backward
+// -------------------------------------------------------------------
 
-#undef DISPATCH
-#define DISPATCH(deviceType,dataType) \
-status = vl::impl::nnbias_backward_blas<deviceType,dataType> \
-(context, derData, derDataMult, derBiases, derBiasesMult, derOutput, derOutputMult) ;
-
-#undef DISPATCHCUDNN
-#define DISPATCHCUDNN(dataType) \
-status = vl::impl::nnbias_cudnn<dataType>::backward \
-(context, derData, derDataMult, derBiases, derBiasesMult, derOutput, derOutputMult) ;
-
-vl::Error
-vl::nnbias_backward(vl::Context& context,
-                    vl::Tensor derData, double derDataMult,
-                    vl::Tensor derBiases, double derBiasesMult,
-                    vl::Tensor derOutput, double derOutputMult)
+template<DeviceType deviceType, DataType dataType>
+struct BiasBackward
 {
-  vl::Error status = vlSuccess ;
-  vl::Type dataType = derOutput.getDataType() ;
+  vl::ErrorCode operator()(Bias &op,
+                           Tensor &derInput, double derInputMult,
+                           Tensor &derBias, double derBiasMult,
+                           double inputMult, double biasMult,
+                           Tensor const &derOutput)
+  {
+    assert(derOutput) ;
 
-  switch (derOutput.getDeviceType()) {
-    default:
-      assert(false) ;
-      status = vl::vlErrorUnknown ;
-      break ;
+    vl::ErrorCode error = VLE_Success ;
+    typedef typename vl::DataTypeTraits<dataType>::type type ;
+    ptrdiff_t numOutputPixels = derOutput.getHeight() * derOutput.getWidth() ;
 
-    case vl::CPU:
-      DISPATCH2(vl::CPU) ;
-      break ;
+    // Sratch space.
+    type const* allOnesMemory = NULL ;
+    allOnesMemory = (type*) op.context.getAllOnes(deviceType,
+                                                  dataType,
+                                                  numOutputPixels) ;
+    if (allOnesMemory == NULL) {
+      error = op.context.getLastError() ;
+      return VLE_OutOfMemory ;
+    }
 
-#if ENABLE_GPU
-    case vl::GPU:
-#if ENABLE_CUDNN
-      if (context.getCudaHelper().getCudnnEnabled()) {
-        DISPATCHCUDNN2() ;
-        if (status == vl::vlSuccess) { return status ; }
-        if (status != vl::vlErrorUnsupported) { goto done ; }
-        /* this case was not supported by CUDNN -- fallback */
+    // Compute derBias.
+    if (derBias) {
+      // Sum derOutput along the broadcast dimensions. These
+      // are x,y, and image.
+      for (int image = 0 ; image < derOutput.getSize() ; ++image) {
+        ptrdiff_t derOutputOffset =
+        (derOutput.getHeight()*derOutput.getWidth()*derOutput.getDepth()) * image ;
+
+        error = vl::impl::blas<deviceType,dataType>::
+        gemv(op.context,
+             't',
+             numOutputPixels, derOutput.getDepth(),
+             biasMult, // alpha
+             (type*)derOutput.getMemory() + derOutputOffset, numOutputPixels,
+             allOnesMemory, 1,
+             (image == 0) ? derBiasMult : 1.0, // beta
+             (type*)derBias.getMemory(), 1) ;
+
+        if (error != vl::VLE_Success) { return error ; }
       }
-#endif
-      DISPATCH2(vl::GPU) ;
-      break ;
-#endif
+    }
+
+    // Compute derInput.
+    if (derInput) {
+      // Fill with zeros, scale, or leave unchanged.
+      if (derInput == 0.0) {
+        error = vl::impl::operations<deviceType,type>::fill
+        ((type*)derInput.getMemory(), derInput.getNumElements(), 0) ;
+      }
+      else if (derInputMult != 1.0) {
+        error = vl::impl::operations<deviceType,type>::copy
+        ((type*)derInput.getMemory(),
+         (type*)derInput.getMemory(),
+         derInput.getNumElements(), derInputMult) ;
+      }
+      if (error != VLE_Success) { goto done ; }
+
+      // Add.
+      error = vl::impl::blas<deviceType,dataType>::
+      axpy(op.context,derInput.getNumElements(),
+           inputMult,(type const*)derOutput.getMemory(),1,
+           (type*)derInput.getMemory(),1) ;
+      if (error != VLE_Success) { goto done ; }
+    }
+
+  done:
+    return op.context.passError(error, __func__) ;
   }
+} ;
+
+// -------------------------------------------------------------------
+//                                                              Driver
+// -------------------------------------------------------------------
+
 #if ENABLE_CUDNN
-done:
+#include "nnbias_cudnn.cu"
 #endif
-  return context.passError(status, __func__) ;
+
+Bias::Bias(Context &context)
+: context(context)
+{ }
+
+vl::ErrorCode
+Bias::forward(vl::Tensor &output, double outputMult,
+              vl::Tensor const &input, double inputMult,
+              vl::Tensor const &bias, double biasMult)
+{
+  return dispatch_cudnn<
+  BiasForward,
+  BiasForwardCudnn>()
+  (*this,output,outputMult,input,inputMult,bias,biasMult) ;
 }
 
+vl::ErrorCode
+Bias::backward(vl::Tensor &derInput, double derInputMult,
+               vl::Tensor &derBias, double derBiasMult,
+               double inputMult, double biasMult,
+               vl::Tensor const &derOutput)
+{
+  return dispatch_cudnn<
+  BiasBackward,
+  BiasBackwardCudnn>()
+  (*this,derInput,derInputMult,derBias,derBiasMult,inputMult,biasMult,derOutput) ;
+}

@@ -7,7 +7,13 @@ function vl_testnn(varargin)
 %  `gpu`:: false
 %    Run the GPU tests.
 %
-%  `command`:: 'nn'
+%  `single`:: true
+%    Perform tests in single precision.
+%
+%  `double`:: false
+%    Perform tests in double precision.
+%
+%  `command`:: `'nn'`
 %    Run only tests which name starts with the specified substring.
 %    E.g. `vl_testnn('command', 'nnloss') would run only the nnloss tests.
 %
@@ -17,6 +23,11 @@ function vl_testnn(varargin)
 %  `tapFile`:: ''
 %    Output the test results to a file. If a specified file does 
 %    exist it is overwritten.
+%
+%  `suiteDir`:: ''
+%    Specifies the directory where the test suite files are located. If
+%    left empty, the default suite is used (<MatConvNetRoot>/matlab/xtest/
+%    /suite).
 %
 %  This function uses the Matlab unit testing framework which was
 %  introduced in Matlab R2013a (v8.1).
@@ -34,31 +45,39 @@ opts.double = false ;
 opts.command = 'nn' ;
 opts.break = false ;
 opts.tapFile = '';
+opts.suiteDir = '' ;
 opts = vl_argparse(opts, varargin) ;
 
 import matlab.unittest.constraints.* ;
 import matlab.unittest.selectors.* ;
 import matlab.unittest.plugins.TAPPlugin;
 import matlab.unittest.plugins.ToFile;
+addpath(fullfile(vl_rootnn, 'examples'));
 
 % Choose which tests to run
 sel = HasName(StartsWithSubstring(opts.command)) ;
-if opts.cpu & ~opts.gpu
-  sel = sel & HasName(ContainsSubstring('cpu')) ;
+if ~opts.gpu
+  sel = sel & ~HasName(ContainsSubstring('device=gpu')) ;
 end
-if opts.gpu & ~opts.cpu
-  sel = sel & HasName(ContainsSubstring('gpu')) ;
+if ~opts.cpu
+  sel = sel & ~HasName(ContainsSubstring('device=cpu')) ;
 end
-if opts.single & ~opts.double
-  sel = sel & HasName(ContainsSubstring('single')) ;
+if ~opts.double
+  sel = sel & ~HasName(ContainsSubstring('dataType=double')) ;
 end
-if opts.double & ~opts.single
-  sel = sel & HasName(ContainsSubstring('double')) ;
+if ~opts.single
+  sel = sel & ~HasName(ContainsSubstring('dataType=single')) ;
+end
+
+root = fileparts(mfilename('fullpath')) ;
+if isempty(opts.suiteDir)
+  opts.suiteDir = fullfile(root, 'suite') ;
+else  % any external subclasses of nntest will need it to be on the path
+  addpath(fullfile(root, 'suite')) ;
 end
 
 % Run tests
-root = fileparts(mfilename('fullpath')) ;
-suite = matlab.unittest.TestSuite.fromFolder(fullfile(root, 'suite'), sel) ;
+suite = matlab.unittest.TestSuite.fromFolder(opts.suiteDir, sel) ;
 runner = matlab.unittest.TestRunner.withTextOutput('Verbosity',3);
 if opts.break
   runner.addPlugin(matlab.unittest.plugins.StopOnFailuresPlugin) ;

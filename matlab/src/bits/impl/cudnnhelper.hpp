@@ -18,6 +18,12 @@ the terms of the BSD license (see the COPYING file).
 
 #define COMMA ,
 
+#if (CUDNN_VERSION >= 6000)
+#define IF_CUDNN_GE6(x) x
+#else
+#define IF_CUDNN_GE6(x)
+#endif
+
 #if (CUDNN_VERSION >= 5000)
 #define IF_CUDNN_GE5(x) x
 #else
@@ -45,20 +51,20 @@ the terms of the BSD license (see the COPYING file).
 
 namespace vl { namespace impl {
 
-  template <vl::Type dataType> struct DataTypeToCudnn { } ;
-  template <> struct DataTypeToCudnn<vl::vlTypeFloat> { static cudnnDataType_t const id = CUDNN_DATA_FLOAT ; } ;
-  template <> struct DataTypeToCudnn<vl::vlTypeDouble> { static cudnnDataType_t const id = CUDNN_DATA_DOUBLE ; } ;
+  template <vl::DataType dataType> struct DataTypeToCudnn { } ;
+  template <> struct DataTypeToCudnn<vl::VLDT_Float> { static cudnnDataType_t const dataType = CUDNN_DATA_FLOAT ; } ;
+  template <> struct DataTypeToCudnn<vl::VLDT_Double> { static cudnnDataType_t const dataType = CUDNN_DATA_DOUBLE ; } ;
 
-  inline cudnnDataType_t dataTypeToCudnn(vl::Type dataType)
+  inline cudnnDataType_t dataTypeToCudnn(vl::DataType dataType)
   {
     switch (dataType) {
-      case vlTypeFloat: return DataTypeToCudnn<vl::vlTypeFloat>::id ;
-      case vlTypeDouble: return DataTypeToCudnn<vl::vlTypeDouble>::id ;
+      case VLDT_Float: return DataTypeToCudnn<vl::VLDT_Float>::dataType ;
+      case VLDT_Double: return DataTypeToCudnn<vl::VLDT_Double>::dataType ;
       default: assert(false) ; return CUDNN_DATA_FLOAT ; // bogus
     }
   }
 
-//  vl::Error createCudnnDescriptorFromTensor(Context & context,
+//  vl::ErrorCode createCudnnDescriptorFromTensor(Context & context,
 //                                            cudnnTensorDescriptor_t * desriptor,
 //                                            Tensor & const tensor)
 //  {
@@ -93,7 +99,7 @@ namespace vl { namespace impl {
 //      return context.setError
 //      (context.getCudaHelper().catchCudnnError(cudnnError, __func__)) ;
 //    }
-//    return vl::vlSuccess ;
+//    return vl::VLE_Success ;
 //  }
 
 } }

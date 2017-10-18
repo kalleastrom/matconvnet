@@ -17,12 +17,11 @@ the terms of the BSD license (see the COPYING file).
 
 namespace vl { namespace impl {
 
-  template <vl::Device dev, typename type>
+  template <vl::DeviceType dev, typename type>
   struct operations
   {
-    typedef type data_type ;
-    static vl::Error copy(data_type * dest, data_type const * src, size_t numElements) ;
-    static vl::Error fill(data_type * dest, size_t numElements, data_type value) ;
+    static vl::ErrorCode copy(type * dst, type const * src, size_t numElements, double mult = 1.0) ;
+    static vl::ErrorCode fill(type * dst, size_t numElements, type value) ;
   } ;
 } }
 

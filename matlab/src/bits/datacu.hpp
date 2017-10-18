@@ -31,26 +31,50 @@ the terms of the BSD license (see the COPYING file).
 #include <cudnn.h>
 #endif
 
+#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 600
+#else
+// AtomicAdd support for older CUDA versions.
+static __device__ double atomicAdd(double* address, double val)
+{
+  unsigned long long int* address_as_ull = (unsigned long long int*)address;
+  unsigned long long int old = *address_as_ull, assumed;
+  do {
+    assumed = old;
+    old = atomicCAS(address_as_ull, assumed,
+                    __double_as_longlong(val +
+                                         __longlong_as_double(assumed)));
+  } while (assumed != old);
+  return __longlong_as_double(old);
+}
+#endif
+
+template<vl::DataType dataType> struct ConvolutionForwardCudnn ;
+template<vl::DataType dataType> struct ConvolutionBackwardCudnn ;
+
 namespace vl {
 
 #if ENABLE_CUDNN
-  namespace impl { template<vl::Type type> struct nnconv_cudnn ; }
+  namespace impl { template<vl::DataType type> struct nnconv_cudnn ; }
 #endif
 
   class CudaHelper {
   public:
-    // Cuda errors
+    // CUDA errors
     cudaError_t getLastCudaError() const ;
     std::string const& getLastCudaErrorMessage() const ;
-    vl::Error catchCudaError(char const* description = NULL) ;
+    vl::ErrorCode catchCudaError(char const* description = NULL) ;
+
+    // CUDA control
+    vl::ErrorCode setStream(cudaStream_t streamId) ;
+    cudaStream_t getStream() const ;
 
     // CuBLAS support
     cublasStatus_t getCublasHandle(cublasHandle_t* handle) ;
     void clearCublas() ;
     cublasStatus_t getLastCublasError() const ;
     std::string const& getLastCublasErrorMessage() const ;
-    vl::Error catchCublasError(cublasStatus_t status,
-                               char const* description = NULL) ;
+    vl::ErrorCode catchCublasError(cublasStatus_t status,
+                                   char const* description = NULL) ;
 
 #if ENABLE_CUDNN
     // CuDNN support
@@ -78,10 +102,11 @@ namespace vl {
 
     cudnnStatus_t getLastCudnnError() const ;
     std::string const& getLastCudnnErrorMessage() const ;
-    vl::Error catchCudnnError(cudnnStatus_t status,
+    vl::ErrorCode catchCudnnError(cudnnStatus_t status,
                               char const* description = NULL) ;
 
-    template<vl::Type type> friend struct vl::impl::nnconv_cudnn ;
+    template<vl::DataType type> friend struct ::ConvolutionForwardCudnn ;
+    template<vl::DataType type> friend struct ::ConvolutionBackwardCudnn ;
 #endif
 
   protected:
@@ -94,6 +119,9 @@ namespace vl {
   private:
     cudaError_t lastCudaError ;
     std::string lastCudaErrorMessage ;
+
+    // Streams support
+    cudaStream_t cudaStream ;
 
     // CuBLAS
     cublasHandle_t cublasHandle ;

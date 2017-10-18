@@ -17,8 +17,9 @@
 %
 %   Means and variances are accumulated across all the data items
 %   (images) stored in the 4D tensor X (from which the name batch
-%   normalization). The constant EPSILON is used to regularize the
-%   computation of sigma(k) and to avoid division by zero.
+%   normalization is derived). The constant EPSILON is used to 
+%   regularize the computation of sigma(k) and to avoid division by 
+%   zero.
 %
 %   [DZDX,DZDG,DZDB] = VL_NNBNORM(X,G,B,DZDY) computes the derviatives
 %   of the block projected onto DZDY. DZDX, DZDG, DZDB and DZDY have
@@ -40,6 +41,14 @@
 %       above. This is useful to disable batch normalization during
 %       testing.
 %
+%   `CuDNN`:: specified
+%       If specified, turns on CuDNN. CuDNN is on by default. This
+%       option can be useful to undo the effect of a previous
+%       `NoCuDNN` option in the argument list.
+%
+%   `NoCuDNN`:: not specified
+%       If specified, turns off CuDNN.
+%
 %   See also: VL_NNNORMALIZE().
 
 % Copyright (C) 2015 Sébastien Ehrhardt, Karel Lenc and Andrea Vedaldi.
@@ -47,3 +56,4 @@
 %
 % This file is part of the VLFeat library and is made available under
 % the terms of the BSD license (see the COPYING file).
+vl_nnnotfound(mfilename);
